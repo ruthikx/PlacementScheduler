@@ -38,6 +38,7 @@ export interface DisruptionEvent {
   type: DisruptionType;
   companyId?: string;
   studentId?: string;
+  studentIds?: string[];
   panelIndex?: number;
   roomName?: string;
   day?: number;
@@ -86,4 +87,3 @@ export interface ScheduleState {
   failedInterviews: FailedInterview[];
   metrics: ScheduleMetrics;
 }
-

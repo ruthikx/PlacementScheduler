@@ -67,7 +67,7 @@ export function generateDataset(seed: string): {
 } {
   const rng = new SeededRandom(seed);
 
-  // 1. Generate Rooms (20 rooms)
+  // 1. Generate Rooms (20 fixed interview rooms)
   const rooms: Room[] = [];
   for (let i = 1; i <= 20; i++) {
     rooms.push({
@@ -100,9 +100,9 @@ export function generateDataset(seed: string): {
     'Qualcomm', 'Cisco', 'Salesforce', 'Adobe', 'Uber', 'Ola', 'Zomato', 'Swiggy'
   ];
   massNames.forEach((name, idx) => {
-    // Determine panels count: some very large recruiters have more panels
-    let panelsCount = rng.nextInt(3, 6);
-    if (idx < 5) panelsCount = rng.nextInt(7, 10); // Super-mass recruiters have 7-10 panels
+    // Determine panels count within the 20-room physical limit.
+    let panelsCount = rng.nextInt(2, 3);
+    if (idx < 5) panelsCount = 4; // Largest recruiters get 20% of campus rooms at once.
 
     // Day preference: Day 1 (index 0) or Day 2 (index 1) for largest, rest spread
     let preferredDay: number | undefined = undefined;
@@ -172,8 +172,8 @@ export function generateDataset(seed: string): {
       // A student's chance of being shortlisted by a mass recruiter is proportional to CGPA
       eligibleStudents.forEach(s => {
         // base probability increases with CGPA:
-        // CGPA 6.0 has ~20% chance, CGPA 9.0 has ~65% chance.
-        const prob = 0.1 + ((s.cgpa - 5.0) / 5.0) * 0.6;
+        // CGPA 6.0 has ~6% chance, CGPA 9.0 has ~14% chance.
+        const prob = 0.03 + ((s.cgpa - 5.0) / 5.0) * 0.14;
         if (rng.next() < prob) {
           s.shortlists.push(company.id);
         }
@@ -191,4 +191,3 @@ export function generateDataset(seed: string): {
 
   return { students, companies, rooms };
 }
-

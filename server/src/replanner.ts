@@ -146,8 +146,8 @@ export class Replanner {
         );
       }
       case 'STUDENT_WITHDRAWAL': {
-        const { studentId } = disruption;
-        return this.interviews.filter(i => i.studentId === studentId);
+        const withdrawnStudentIds = new Set(disruption.studentIds || (disruption.studentId ? [disruption.studentId] : []));
+        return this.interviews.filter(i => withdrawnStudentIds.has(i.studentId));
       }
       case 'ROOM_UNAVAILABLE': {
         const { roomName, day, startSlot, endSlot } = disruption;
@@ -184,15 +184,24 @@ export class Replanner {
 
     // Case 1: Student withdrawal
     if (disruption.type === 'STUDENT_WITHDRAWAL') {
-      const student = this.studentsMap[disruption.studentId || ''];
-      if (student) {
-        // Remove student from student list & map
-        this.students = this.students.filter(s => s.id !== student.id);
-        delete this.studentsMap[student.id];
+      const withdrawnStudentIds = new Set(disruption.studentIds || (disruption.studentId ? [disruption.studentId] : []));
+      const withdrawnStudents = [...withdrawnStudentIds]
+        .map(id => this.studentsMap[id])
+        .filter((student): student is Student => Boolean(student));
 
-        // Register cancellations for the student's scheduled interviews
+      if (withdrawnStudents.length > 0) {
+        // Remove students from student list & map
+        this.students = this.students.filter(s => !withdrawnStudentIds.has(s.id));
+        withdrawnStudents.forEach(student => {
+          delete this.studentsMap[student.id];
+        });
+
+        // Register cancellations for the withdrawn students' scheduled interviews
         affected.forEach(i => {
           const comp = this.companiesMap[i.companyId];
+          const student = withdrawnStudents.find(s => s.id === i.studentId);
+          if (!student) return;
+
           diffChanges.push({
             type: 'CANCELLED',
             studentName: student.name,
@@ -210,8 +219,8 @@ export class Replanner {
         const stillFailedInterviews: FailedInterview[] = [];
 
         this.failedInterviews.forEach(failed => {
-          // If this failed interview was for the withdrawn student, drop it
-          if (failed.studentId === student.id) return;
+          // If this failed interview was for a withdrawn student, drop it
+          if (withdrawnStudentIds.has(failed.studentId)) return;
 
           const s = this.studentsMap[failed.studentId];
           const c = this.companiesMap[failed.companyId];
@@ -414,6 +423,20 @@ export class Replanner {
                 for (let p = 0; p < otherComp.panelsCount; p++) {
                   if (otherScheduled) break;
                   for (const r of this.rooms) {
+                    const overlapsOriginalTime =
+                      d === otherDay &&
+                      s < otherSlot + otherInt.durationSlots &&
+                      otherSlot < s + otherInt.durationSlots;
+                    if (
+                      overlapsOriginalTime &&
+                      (
+                        r.name === otherRoom ||
+                        (otherInt.companyId === comp.id && p === otherPanel)
+                      )
+                    ) {
+                      continue;
+                    }
+
                     if (
                       this.isStudentFree(otherInt.studentId, d, s, otherInt.durationSlots) &&
                       this.isPanelFree(otherInt.companyId, p, d, s, otherInt.durationSlots) &&
@@ -801,7 +824,7 @@ export class Replanner {
         const first = ints[index];
         const second = ints[index + 1];
         const gap = second.startSlot - (first.startSlot + first.durationSlots);
-        if (gap >= 0) {
+        if (gap > 0) {
           totalGapsInSlots += gap;
           gapCount++;
         }
@@ -822,4 +845,3 @@ export class Replanner {
     };
   }
 }
-

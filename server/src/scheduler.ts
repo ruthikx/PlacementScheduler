@@ -1,5 +1,7 @@
 import { Student, Company, Room, Interview, FailedInterview, ScheduleMetrics } from './types';
 
+const MAX_SWAP_CANDIDATES_PER_INTERVIEW = 80;
+
 export class Scheduler {
   private studentBusy: { [studentId: string]: boolean[][] } = {}; // studentId -> day -> slot (boolean)
   private roomBusy: { [roomName: string]: boolean[][] } = {};       // roomName -> day -> slot (boolean)
@@ -129,12 +131,15 @@ export class Scheduler {
             if (scheduled) break;
             for (let pIdx = 0; pIdx < company.panelsCount; pIdx++) {
               if (scheduled) break;
+              if (
+                !this.isStudentFree(student.id, day, startSlot, company.durationSlots) ||
+                !this.isPanelFree(company.id, pIdx, day, startSlot, company.durationSlots)
+              ) {
+                continue;
+              }
+
               for (const room of this.rooms) {
-                if (
-                  this.isStudentFree(student.id, day, startSlot, company.durationSlots) &&
-                  this.isPanelFree(company.id, pIdx, day, startSlot, company.durationSlots) &&
-                  this.isRoomFree(room.name, day, startSlot, company.durationSlots)
-                ) {
+                if (this.isRoomFree(room.name, day, startSlot, company.durationSlots)) {
                   const interview: Interview = {
                     id: `I-${company.id}-${student.id}`,
                     studentId: student.id,
@@ -190,7 +195,9 @@ export class Scheduler {
     interviews: Interview[]
   ): boolean {
     // Find all interviews already scheduled for this company
-    const existingCompanyInterviews = interviews.filter(i => i.companyId === company.id);
+    const existingCompanyInterviews = interviews
+      .filter(i => i.companyId === company.id)
+      .slice(-MAX_SWAP_CANDIDATES_PER_INTERVIEW);
 
     for (const otherInt of existingCompanyInterviews) {
       const otherStudentId = otherInt.studentId;
@@ -212,13 +219,27 @@ export class Scheduler {
             if (otherRescheduled) break;
             for (let pIdx = 0; pIdx < company.panelsCount; pIdx++) {
               if (otherRescheduled) break;
+              if (
+                !this.isStudentFree(otherStudentId, day, startSlot, company.durationSlots) ||
+                !this.isPanelFree(company.id, pIdx, day, startSlot, company.durationSlots)
+              ) {
+                continue;
+              }
+
               for (const room of this.rooms) {
-                // Check if this alternative slot is free for other student, new panel and new room
+                const overlapsOriginalTime =
+                  day === originalDay &&
+                  startSlot < originalStartSlot + company.durationSlots &&
+                  originalStartSlot < startSlot + company.durationSlots;
                 if (
-                  this.isStudentFree(otherStudentId, day, startSlot, company.durationSlots) &&
-                  this.isPanelFree(company.id, pIdx, day, startSlot, company.durationSlots) &&
-                  this.isRoomFree(room.name, day, startSlot, company.durationSlots)
+                  overlapsOriginalTime &&
+                  (pIdx === originalPanel || room.name === originalRoom)
                 ) {
+                  continue;
+                }
+
+                // Check if this alternative slot is free for other student, new panel and new room
+                if (this.isRoomFree(room.name, day, startSlot, company.durationSlots)) {
                   // Relocate other student's interview
                   otherInt.day = day;
                   otherInt.startSlot = startSlot;
@@ -312,7 +333,6 @@ export class Scheduler {
     const percentScheduled = totalMatches > 0 ? parseFloat(((scheduledCount / totalMatches) * 100).toFixed(1)) : 0;
 
     // Room Utilization
-    // 20 rooms * 4 days * 18 slots = 1440 room-slots total
     const totalRoomSlots = this.rooms.length * 4 * 18;
     let occupiedRoomSlots = 0;
     interviews.forEach(i => {
@@ -354,7 +374,7 @@ export class Scheduler {
         const first = ints[index];
         const second = ints[index + 1];
         const gap = second.startSlot - (first.startSlot + first.durationSlots);
-        if (gap >= 0) {
+        if (gap > 0) {
           totalGapsInSlots += gap;
           gapCount++;
         }
@@ -376,4 +396,3 @@ export class Scheduler {
     };
   }
 }
-

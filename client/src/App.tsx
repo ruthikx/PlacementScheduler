@@ -3,14 +3,11 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle2,
-  Users,
   MapPin,
   RotateCcw,
   UserMinus,
-  Clock,
   Briefcase,
   Layers,
-  ArrowRight,
   Sparkles,
   HelpCircle
 } from 'lucide-react';
@@ -25,8 +22,7 @@ import {
   DisruptionEvent,
   DisruptionType,
   ReplanPolicy,
-  Interview,
-  Student
+  Interview
 } from './types';
 
 // Helper to convert slot index to 12h time format
@@ -54,6 +50,8 @@ export default function App() {
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [selectedRoomName, setSelectedRoomName] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [selectedPanelIndex, setSelectedPanelIndex] = useState(0);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [disruptionDay, setDisruptionDay] = useState(0);
   const [hoursLate, setHoursLate] = useState(2);
@@ -121,16 +119,35 @@ export default function App() {
     const query = studentSearchQuery.toLowerCase();
     return scheduleState.students
       .filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query))
+      .filter(s => !selectedStudentIds.includes(s.id))
       .slice(0, 5);
-  }, [studentSearchQuery, scheduleState]);
+  }, [studentSearchQuery, scheduleState, selectedStudentIds]);
+
+  const selectedPanelCompany = useMemo(() => {
+    return scheduleState?.companies.find(c => c.id === selectedCompanyId);
+  }, [scheduleState, selectedCompanyId]);
+
+  useEffect(() => {
+    const panelCount = selectedPanelCompany?.panelsCount ?? 1;
+    if (selectedPanelIndex >= panelCount) {
+      setSelectedPanelIndex(0);
+    }
+  }, [selectedPanelCompany, selectedPanelIndex]);
+
+  const selectedWithdrawalStudents = useMemo(() => {
+    if (!scheduleState) return [];
+    const selectedIds = new Set(selectedStudentIds);
+    return scheduleState.students.filter(s => selectedIds.has(s.id));
+  }, [scheduleState, selectedStudentIds]);
 
   // Construct current disruption event from state
   const currentDisruptionEvent = useMemo((): DisruptionEvent => {
     return {
       type: disruptionType,
       companyId: disruptionType === 'COMPANY_LATE' || disruptionType === 'PANEL_DROP' ? selectedCompanyId : undefined,
-      panelIndex: disruptionType === 'PANEL_DROP' ? 0 : undefined, // Default to first panel for simplicity
-      studentId: disruptionType === 'STUDENT_WITHDRAWAL' ? selectedStudentId : undefined,
+      panelIndex: disruptionType === 'PANEL_DROP' ? selectedPanelIndex : undefined,
+      studentId: disruptionType === 'STUDENT_WITHDRAWAL' ? selectedStudentIds[0] : undefined,
+      studentIds: disruptionType === 'STUDENT_WITHDRAWAL' ? selectedStudentIds : undefined,
       roomName: disruptionType === 'ROOM_UNAVAILABLE' ? selectedRoomName : undefined,
       day: disruptionType !== 'STUDENT_WITHDRAWAL' ? disruptionDay : undefined,
       hoursLate: disruptionType === 'COMPANY_LATE' ? hoursLate : undefined,
@@ -142,6 +159,8 @@ export default function App() {
     selectedCompanyId,
     selectedRoomName,
     selectedStudentId,
+    selectedStudentIds,
+    selectedPanelIndex,
     disruptionDay,
     hoursLate,
     startSlot,
@@ -177,6 +196,7 @@ export default function App() {
       // Reset form variables
       setStudentSearchQuery('');
       setSelectedStudentId('');
+      setSelectedStudentIds([]);
     } catch (err: any) {
       setError(err.message || 'Failed to commit replan.');
     } finally {
@@ -201,21 +221,6 @@ export default function App() {
 
   const totalSlots = showExtendedSlots ? 22 : 18; // 18 slots = 9am to 6pm, 22 slots = 9am to 8pm
   const slotIndices = Array.from({ length: totalSlots }, (_, i) => i);
-
-  // Map students to their scheduled times to check for visual warning overlays (double bookings)
-  const studentSlotsMap = useMemo(() => {
-    const map: { [studentId: string]: { [day: number]: Set<number> } } = {};
-    if (!displaySchedule) return map;
-    
-    displaySchedule.interviews.forEach(i => {
-      if (!map[i.studentId]) map[i.studentId] = {};
-      if (!map[i.studentId][i.day]) map[i.studentId][i.day] = new Set();
-      for (let s = i.startSlot; s < i.startSlot + i.durationSlots; s++) {
-        map[i.studentId][i.day].add(s);
-      }
-    });
-    return map;
-  }, [displaySchedule]);
 
   // Check if a cell is affected by a room closure (disruption)
   const isRoomCellUnavailable = (roomName: string, day: number, slot: number): boolean => {
@@ -501,17 +506,29 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">Panel</label>
                       <select
-                        value={startSlot}
-                        onChange={(e) => setStartSlot(parseInt(e.target.value))}
+                        value={selectedPanelIndex}
+                        onChange={(e) => setSelectedPanelIndex(parseInt(e.target.value))}
                         className="w-full text-sm border border-slate-300 rounded-lg p-2"
                       >
-                        {Array.from({ length: 18 }).map((_, i) => (
-                          <option key={i} value={i}>{getSlotLabel(i)}</option>
+                        {Array.from({ length: selectedPanelCompany?.panelsCount ?? 1 }).map((_, i) => (
+                          <option key={i} value={i}>Panel {i}</option>
                         ))}
                       </select>
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label>
+                    <select
+                      value={startSlot}
+                      onChange={(e) => setStartSlot(parseInt(e.target.value))}
+                      className="w-full text-sm border border-slate-300 rounded-lg p-2"
+                    >
+                      {Array.from({ length: 18 }).map((_, i) => (
+                        <option key={i} value={i}>{getSlotLabel(i)}</option>
+                      ))}
+                    </select>
                   </div>
                 </>
               )}
@@ -599,7 +616,8 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setSelectedStudentId(s.id);
-                            setStudentSearchQuery(`${s.name} (${s.branch})`);
+                            setSelectedStudentIds(prev => prev.includes(s.id) ? prev : [...prev, s.id]);
+                            setStudentSearchQuery('');
                           }}
                           className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex justify-between border-b border-slate-100 last:border-none"
                         >
@@ -609,9 +627,27 @@ export default function App() {
                       ))}
                     </div>
                   )}
-                  {selectedStudentId && (
-                    <div className="mt-2 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded border border-indigo-150 font-medium">
-                      Selected: Student ID {selectedStudentId}
+                  {selectedWithdrawalStudents.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {selectedWithdrawalStudents.map(student => (
+                        <label
+                          key={student.id}
+                          className="flex items-center justify-between gap-2 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded border border-indigo-150 font-medium"
+                        >
+                          <span className="truncate">{student.name} ({student.id})</span>
+                          <input
+                            type="checkbox"
+                            checked
+                            onChange={() => {
+                              setSelectedStudentIds(prev => prev.filter(id => id !== student.id));
+                              if (selectedStudentId === student.id) {
+                                setSelectedStudentId('');
+                              }
+                            }}
+                            className="accent-indigo-600"
+                          />
+                        </label>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -660,14 +696,14 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2 pt-2">
               <button
                 onClick={handlePreviewReplan}
-                disabled={loading || (disruptionType === 'STUDENT_WITHDRAWAL' && !selectedStudentId)}
+                disabled={loading || (disruptionType === 'STUDENT_WITHDRAWAL' && selectedStudentIds.length === 0)}
                 className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold py-2.5 px-4 rounded-lg shadow-sm transition text-center"
               >
                 Preview Replan
               </button>
               <button
                 onClick={handleCommitReplan}
-                disabled={loading || (disruptionType === 'STUDENT_WITHDRAWAL' && !selectedStudentId)}
+                disabled={loading || (disruptionType === 'STUDENT_WITHDRAWAL' && selectedStudentIds.length === 0)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-lg shadow-sm transition text-center"
               >
                 Apply Disruption
@@ -691,7 +727,7 @@ export default function App() {
                       <span className="text-slate-500 block">
                         {d.type === 'COMPANY_LATE' && `Company C-${d.companyId?.split('-')[1]} late ${d.hoursLate}h on Day ${d.day! + 1}`}
                         {d.type === 'PANEL_DROP' && `Panel ${d.panelIndex} for C-${d.companyId?.split('-')[1]} dropped Day ${d.day! + 1}`}
-                        {d.type === 'STUDENT_WITHDRAWAL' && `Student ${d.studentId} withdrew`}
+                        {d.type === 'STUDENT_WITHDRAWAL' && `${(d.studentIds || (d.studentId ? [d.studentId] : [])).length} students withdrew`}
                         {d.type === 'ROOM_UNAVAILABLE' && `Room ${d.roomName} closed Day ${d.day! + 1}`}
                       </span>
                     </div>
@@ -972,4 +1008,3 @@ export default function App() {
     </div>
   );
 }
-
