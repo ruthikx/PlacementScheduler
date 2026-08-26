@@ -1,5 +1,11 @@
 import { ScheduleState, DisruptionEvent, ReplanPolicy, ReplanDiff } from './types';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
+
 export interface ReplanResponse {
   success: boolean;
   schedule: ScheduleState;
@@ -8,7 +14,7 @@ export interface ReplanResponse {
 }
 
 export async function getSchedule(): Promise<ScheduleState> {
-  const res = await fetch('/api/schedule');
+  const res = await fetch(apiUrl('/api/schedule'));
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to fetch schedule.');
@@ -18,7 +24,7 @@ export async function getSchedule(): Promise<ScheduleState> {
 }
 
 export async function resetSchedule(seed: string): Promise<ScheduleState> {
-  const res = await fetch('/api/reset', {
+  const res = await fetch(apiUrl('/api/reset'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ seed }),
@@ -37,7 +43,7 @@ export async function replanSchedule(
   maxChurn: number,
   commit: boolean
 ): Promise<ReplanResponse> {
-  const res = await fetch('/api/replan', {
+  const res = await fetch(apiUrl('/api/replan'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ disruption, policy, maxChurn, commit }),
@@ -48,4 +54,3 @@ export async function replanSchedule(
   }
   return res.json();
 }
-
